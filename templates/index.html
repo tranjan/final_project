@@ -1,0 +1,350 @@
+<html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootswatch/3.3.7/cerulean/bootstrap.min.css">
+        <script src="http://code.jquery.com/jquery-3.1.1.min.js"></script>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <title>
+            SaltMetric
+        </title>
+    </head>
+    <body>
+        <nav style="text-align:center;min-width:600px;" class="navbar navbar-default">
+            <table>
+                <tbody>
+                    <tr>
+                        <td>
+                            <h3 style="margin:10px 10px 10px 10px;">Model: </h3>
+                        </td>
+                        <td>
+                            <select class="form-control" id="model" style="margin:10px 10px 10px 0;">
+                                <option selected=""></option>
+                                {% for model in models %}
+                                <option>{{ model }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <h3 style="margin:10px 10px 10px 10px;">Thread: </h3>
+                        </td>
+                        <td>
+                            <select class="form-control" id="thread" style="margin:10px 10px 10px 0;">
+                            </select>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </nav>
+        <div id="plotdiv">
+        </div>
+    </body>
+    <script>
+        td_style = "border:1px solid black;padding:10px;";
+        th_style = "background-color:#1995dc;border:1px solid black;padding:10px;";
+        var refresh_function = null;
+        var modelData = {
+            vader:{
+                trace1:{},
+                trace2:{},
+                trace3:{},
+                trace4:{}
+            },
+            textblob:{
+                trace1:{},
+                trace2:{}
+            }
+        }
+        var thread_dict = {};
+        {% for model in models %}
+        thread_dict["{{ model }}"] = '';
+        {% endfor %}
+        $("#model").change(function() {
+            if($(this).val() != "")
+            {
+                chosenmodel = $(this).val();
+                $.getJSON('/get_threads_for_model', {
+                    'model': chosenmodel
+                }, function(data) {
+                    $("#thread").html("");
+                    $("#thread").append($("<option>", {html:""}));
+                    threadfound = false;
+                    for (v in data.threads)
+                    {
+                        if(thread_dict[chosenmodel] == data.threads[v]._id)
+                        {
+                            threadfound = true;
+                        }
+                        $("#thread").append($("<option>", {html:data.threads[v].title, id:"thread_" + data.threads[v]._id}));
+                    }
+                    if(thread_dict[chosenmodel] == "" || threadfound == false)
+                    {
+                        $("#thread").val("");
+                    }
+                    else
+                    {
+                        $("#thread").val(data.threads[v].title);
+                        $("#thread_" + data.threads[v]._id).attr('selected', 'selected');
+                    }
+                    $("#thread").change();
+                });
+            }
+            else
+            {
+                $("#thread").html("");
+                $("#thread").append($("<option>", {html:""}));
+                $("#thread").val("");
+                $("#thread").change();
+            }
+        });
+        $("#thread").change(function() {
+            clearInterval(refresh_function);
+            $("#plotdiv").html("");
+            if($(this).val() == "")
+            {
+                if($("#model").val() != "")
+                {
+                    thread_dict[$("#model").val()] = "";
+                }
+            }
+            else
+            {
+                thread_dict[$("#model").val()] = $(this).children(":selected").attr("id").split('_')[1];
+                getPlot($("#model").val(), $(this).children(":selected").attr("id").split('_')[1]);
+            }
+        });
+        function textblobDiv(data)
+        {
+            table1 = $("<table>", {style:"border-collapse:collapse;margin-left:auto;margin-right:auto;"});
+            tbody1 = $("<tbody>");
+            tr1 = $("<tr>");
+            td1 = $("<td>", {style:"border:1px solid black;"});
+            td1.append($("<div>", {id:"poldiv"}));
+            tr2 = $("<tr>");
+            td2 = $("<td>", {style:"border:1px solid black;"});
+            td2.append($("<div>", {id:"subdiv"}));
+            tr1.append(td1);
+            tr2.append(td2);
+            tbody1.append(tr1);
+            tbody1.append(tr2);
+            table1.append(tbody1);
+            $("#plotdiv").append(table1);
+
+            count_var = data.info['count'];
+            text_var = data.info['_id'];
+            pol_var = data.info['polarity'];
+            sub_var = data.info['subjectivity'];
+
+            modelData.textblob.trace1 = {
+                x:count_var,
+                y:pol_var,
+                mode:'markers+text',
+                text:text_var,
+                textposition:'right',
+            };
+            var layout1 = {
+                title: 'Polarity',
+                yaxis: {
+                    title: 'Mean polarity'
+                },
+                xaxis: {
+                    title: 'Count'
+                }
+            };
+
+            modelData.textblob.trace2 = {
+                x:count_var,
+                y:sub_var,
+                mode:'markers+text',
+                text:text_var,
+                textposition:'right',
+            };
+            var layout2 = {
+                title: 'Subjectivity',
+                yaxis: {
+                    title: 'Mean subjectivity'
+                },
+                xaxis: {
+                    title: 'Count'
+                }
+            };
+
+            Plotly.newPlot('poldiv', [modelData.textblob.trace1], layout1);
+            Plotly.newPlot('subdiv', [modelData.textblob.trace2], layout2);
+        }
+        function updateTextblobDiv(data)
+        {
+            modelData.textblob.trace1['y'] = data.info['polarity'];
+            modelData.textblob.trace1['x'] = data.info['count'];
+            modelData.textblob.trace1['text'] = data.info['_id'];
+
+            modelData.textblob.trace2['y'] = data.info['subjectivity'];
+            modelData.textblob.trace2['x'] = data.info['count'];
+            modelData.textblob.trace2['text'] = data.info['_id'];
+
+            Plotly.redraw('poldiv');
+            Plotly.redraw('subdiv');
+        }
+        function vaderDiv(data)
+        {
+            table1 = $("<table>", {style:"border-collapse:collapse;margin-left:auto;margin-right:auto;"});
+            tbody1 = $("<tbody>");
+            tr1 = $("<tr>");
+            td1 = $("<td>", {style:"border:1px solid black;"});
+            td1.append($("<div>", {id:"compdiv"}));
+            tr2 = $("<tr>");
+            td2 = $("<td>", {style:"border:1px solid black;"});
+            td2.append($("<div>", {id:"posdiv"}));
+            tr3 = $("<tr>");
+            td3 = $("<td>", {style:"border:1px solid black;"});
+            td3.append($("<div>", {id:"neudiv"}));
+            tr4 = $("<tr>");
+            td4 = $("<td>", {style:"border:1px solid black;"});
+            td4.append($("<div>", {id:"negdiv"}));
+            tr1.append(td1);
+            tr2.append(td2);
+            tr3.append(td3);
+            tr4.append(td4);
+            tbody1.append(tr1);
+            tbody1.append(tr2);
+            tbody1.append(tr3);
+            tbody1.append(tr4);
+            table1.append(tbody1);
+            $("#plotdiv").append(table1);
+
+            count_var = data.info['count'];
+            compound_var = data.info['compound'];
+            pos_var = data.info['pos'];
+            neg_var = data.info['neg'];
+            neu_var = data.info['neu'];
+            text_var = data.info['_id'];
+
+            modelData.vader.trace1 = {
+                x:count_var,
+                y:compound_var,
+                mode:'markers+text',
+                text:text_var,
+                textposition:'right'
+            };
+            var layout1 = {
+                title: 'Compound',
+                yaxis: {
+                    title: 'Mean compound score'
+                },
+                xaxis: {
+                    title: 'Count'
+                }
+            };
+
+            modelData.vader.trace2 = {
+                x:count_var,
+                y:pos_var,
+                mode:'markers+text',
+                text:text_var,
+                textposition:'right'
+            };
+            var layout2 = {
+                title: 'Positive',
+                yaxis: {
+                    title: 'Mean positive probability'
+                },
+                xaxis: {
+                    title: 'Count'
+                }
+            };
+
+            modelData.vader.trace3 = {
+                x:count_var,
+                y:neu_var,
+                mode:'markers+text',
+                text:text_var,
+                textposition:'right'
+            };
+            var layout3 = {
+                title: 'Neutral',
+                yaxis: {
+                    title: 'Mean neutral probability'
+                },
+                xaxis: {
+                    title: 'Count'
+                }
+            };
+
+            modelData.vader.trace4 = {
+                x:count_var,
+                y:neg_var,
+                mode:'markers+text',
+                text:text_var,
+                textposition:'right'
+            };
+            var layout4 = {
+                title: 'Negative',
+                yaxis: {
+                    title: 'Mean negative probability'
+                },
+                xaxis: {
+                    title: 'Count'
+                }
+            };
+
+            Plotly.newPlot('compdiv', [modelData.vader.trace1], layout1);
+            Plotly.newPlot('posdiv', [modelData.vader.trace2], layout2);
+            Plotly.newPlot('neudiv', [modelData.vader.trace3], layout3);
+            Plotly.newPlot('negdiv', [modelData.vader.trace4], layout4);
+        }
+        function updateVaderDiv(data)
+        {
+            modelData.vader.trace1['y'] = data.info['compound'];
+            modelData.vader.trace1['x'] = data.info['count'];
+            modelData.vader.trace1['text'] = data.info['_id'];
+
+            modelData.vader.trace2['y'] = data.info['pos'];
+            modelData.vader.trace2['x'] = data.info['count'];
+            modelData.vader.trace2['text'] = data.info['_id'];
+
+            modelData.vader.trace3['y'] = data.info['neu'];
+            modelData.vader.trace3['x'] = data.info['count'];
+            modelData.vader.trace3['text'] = data.info['_id'];
+
+            modelData.vader.trace4['y'] = data.info['neg'];
+            modelData.vader.trace4['x'] = data.info['count'];
+            modelData.vader.trace4['text'] = data.info['_id'];
+
+            Plotly.redraw('compdiv');
+            Plotly.redraw('posdiv');
+            Plotly.redraw('neudiv');
+            Plotly.redraw('negdiv');
+        }
+        function getPlot(model, thread)
+        {
+            $.getJSON('/get_plot', {
+                'model': model,
+                'thread': thread
+            }, function(data) {
+                if(model == 'vader')
+                {
+                    vaderDiv(data);
+                }
+                else if(model == 'textblob')
+                {
+                    textblobDiv(data);
+                }
+                refresh_function = setInterval(updatePlot, 5000, model, thread);
+            });
+        }
+        function updatePlot(model, thread)
+        {
+            $.getJSON('/get_plot', {
+                'model': model,
+                'thread': thread
+            }, function(data) {
+                if(model == 'vader')
+                {
+                    updateVaderDiv(data);
+                }
+                else if(model == 'textblob')
+                {
+                    updateTextblobDiv(data);
+                }
+            });
+        }
+    </script>
+</html>
